@@ -16,9 +16,11 @@
  * 
  *  ver. 1.0.0 2021-11-07 kkossev  - first version (temperature and humidity configuration when the device awakes)
  *  ver. 1.0.1 2021-11-07 kkossev  - added sendConfigurationToDeviceNow
+ *  ver. 1.1.0 2021-11-08 kkossev  - TODO !!!!!!!!!!!!!!!!!!!!reporting configuration settings moved from Commands into Preferencies section
+ *                                 - TODO !!!!!!!!!!!!  added reading of the device Reporting parameters; the actually read values are put as default preferencies...
  *
 */
-public static String version()	  { return "v1.0.1" }
+public static String version()	  { return "v1.1.0" }
 
 
 import hubitat.device.HubAction
@@ -36,6 +38,24 @@ import java.util.concurrent.*
 @Field static def displayCounter
 @Field static def timeoutCounter
 
+    // Constants
+@Field static final Integer CONST = 0
+@Field static final Integer powerDiv = 1
+@Field static final Integer energyDiv = 100
+@Field static final Integer currentDiv = 1000
+@Field static final String ONOFF = "Switch"
+@Field static final String BATTERY = "Battery"
+@Field static final String TEMPERATURE = "Temperature"
+@Field static final String PRESSURE = "Pressure"
+@Field static final String HUMIDITY = "Humidity"
+@Field static final String POWER = "Power"
+@Field static final String ENERGY = "Energy"
+@Field static final String VOLTAGE = "Voltage"
+@Field static final String AMPERAGE = "Amperage"
+
+
+int staticTestNumber = 99
+
 metadata {
     definition (name: "Zigbee Reporting Configuration", namespace: "kkossev", author: "Krassimir Kossev", importUrl: "https://raw.githubusercontent.com/kkossev/Hubitat/main/Drivers/Zigbee%20Reporting%20Configuration/Zigbee%20Reporting%20Configuration.groovy" ) {
 
@@ -44,54 +64,50 @@ metadata {
 	capability "PressureMeasurement"            // pressure - NUMBER, unit: Pa || psi ???
 	capability "Battery"
         
-    capability "Initialize"
+    //capability "Initialize"
 
     attribute   "_1", "string"        // when defined as attributes, will be shown on top of the 'Current States' list ...
     attribute   "_2", "string"
     attribute   "_3", "string"
   
-    command "configureTemperatureReporting", [ 
-        [name: "Minimum Reporting Interval (seconds)", type: "ENUM", constraints: ["10", "1", "5", "30", "60", "120", "300", "600"], description: "Select Minimum reporting time (in seconds)"],
-        [name: "Maximum Reporting Interval (seconds)", type: "ENUM", constraints: ["3600", "120", "300", "600", "900", "1800", "7200", "43200"], description: "Select Maximim reporting time (in seconds)"],
-        [name: "Minimum measurement change (degrees)", type: "ENUM", constraints: ["0.25", "0.01", "0.05", "0.10", "0.50", "1.00", "2.0", "5.0"], description: "Select Minimum measurement change to be reported"]
+    command "_0_getDeviceInfo"
+    command "_1_readReportingConfiguration"
+    command "_2_configureeReporting", [ 
+        [name: "measurement*", type: "ENUM", constraints: ["*** Select ***", BATTERY, TEMPERATURE, HUMIDITY, POWER, ENERGY, VOLTAGE, AMPERAGE], description: "Select measurement to configure"],
+        [name: "Minimum Reporting Interval (seconds)", type: "NUMBER", defaultValue: 2, value: 3, description: "Select Minimum reporting time (in seconds)"],
+        [name: "Maximum Reporting Interval (seconds)", type: "NUMBER", constraints: ["3600", "120", "300", "600", "900", "1800", "7200", "43200"], description: "Select Maximim reporting time (in seconds)"],
+        [name: "Minimum measurement change", type: "NUMBER", constraints: ["0.25", "0.01", "0.05", "0.10", "0.50", "1.00", "2.0", "5.0"], description: "Select Minimum measurement change to be reported"]
     ]
-    command "configureHumidityReporting", [ 
-        [name: "Minimum Reporting Interval (seconds)", type: "ENUM", constraints: ["10", "1", "5", "30", "60", "120", "300", "600"], description: "Select Minimum reporting time (in seconds)"],
-        [name: "Maximum Reporting Interval (seconds)", type: "ENUM", constraints: ["3600", "120", "300", "600", "900", "1800", "7200", "43200"], description: "Select Maximim reporting time (in seconds)"],
-        [name: "Minimum measurement change (percent)", type: "ENUM", constraints: ["1", "0.1", "0.5", "2.5", "5", "10" ], description: "Select Minimum measurement change to be reported (percent)"]
+    command "_3_sendConfigurationToDevice"
+    command "readAttribute", [ 
+        [name: "attribute*", type: "ENUM", constraints: ["*** Select ***", ONOFF, BATTERY, TEMPERATURE, PRESSURE, HUMIDITY, POWER, ENERGY, VOLTAGE, AMPERAGE], description: "Select attribute to read"]
     ]
-/*        
-    command "configurePressureReporting", [ 
-        [name: "Minimum Reporting Interval (seconds)", type: "ENUM", constraints: ["10", "1", "5", "30", "60", "120", "300", "600"], description: "Select Minimum reporting time (in seconds)"],
-        [name: "Maximum Reporting Interval (seconds)", type: "ENUM", constraints: ["3600", "120", "300", "600", "900", "1800", "7200", "43200"], description: "Select Maximim reporting time (in seconds)"],
-        [name: "Minimum measurement change (Pa)", type: "ENUM", constraints: ["10", "1", "50", "100", "500", "1000", "10000"  ], description: "Select Minimum measurement change to be reported (Pa)"]
+    command "readConfiguration", [ 
+        [name: "attribute*", type: "ENUM", constraints: ["*** Select ***", ONOFF, BATTERY, TEMPERATURE, PRESSURE, HUMIDITY, POWER, ENERGY, VOLTAGE, AMPERAGE], description: "Select configuration to read"]
     ]
-*/
-    command "sendConfigurationToDeviceWhenAwake"
-    command "sendConfigurationToDeviceNow"
-    command "getDeviceInfo"
-    //command "identify" //,  [[name: "identify", type: "STRING", description: "flash a light with a period of 0.5 seconds"]]
-    //command "test"
+
+    command "test"
 
       
  	fingerprint inClusters: "0000,0001,0003,0004,0006,1000", outClusters: "0019,000A,0003,0004,0005,0006,0008,1000", manufacturer: "ANY", model: "ANY", deviceJoinName: "Zigbee Reporting Configuration"
     }
     preferences {
+            input (name: "_showAllPreferences",type: "bool", title: "<b>Show All Preferences?</b>", defaultValue: true )
             input (name: "traceEnable", type: "bool", title: "Enable trace logging", defaultValue: true)
             input (name: "logEnable", type: "bool", title: "Enable debug logging", defaultValue: true)
             input (name: "txtEnable", type: "bool", title: "Enable description text logging", defaultValue: true)
-            input (name: "repairAggressive", type: "bool", title: "Re-pair with aggressive reporting settings", defaultValue: false)
-  /*    
-            input name: "param1", title: "Selective reporting - Threshold Temperature", description: "°C", type: "enum", 
-                options:[[0:"Disabled (only time-based reports)"], [1:"0.1°C"], [2:"0.2°C"], [3:"0.3°C"], [4:"0.4°C"], [5:"0.5°C"], [10:"1°C"], [15:"1.5°C"], [20:"2°C"], [25:"2.5°C"], [30:"3°C"], [40:"4°C"], [50:"5°C"]],
-                defaultValue: 5, required: true
+            if( _showAllPreferences || _showAllPreferences == null ){ // Show the preferences options
+                input (name: "repairAggressive", type: "bool", title: "Re-pair with aggressive reporting settings", defaultValue: false)
+/*
+                input name: "param1", title: "Selective reporting - Threshold Temperature", description: "°C", type: "enum", 
+                    options:[[0:"Disabled (only time-based reports)"], [1:"0.1°C"], [2:"0.2°C"], [3:"0.3°C"], [4:"0.4°C"], [5:"0.5°C"], [10:"1°C"], [15:"1.5°C"], [20:"2°C"], [25:"2.5°C"], [30:"3°C"], [40:"4°C"], [50:"5°C"]],
+                    defaultValue: 5, required: true
+                input (name: "testNumber", type: "number", title: "number test", defaultValue: $staticTestNumber, value:$staticTestNumber)
 */
-//            input name: 'loggingDuration', type: 'enum', title: '<b>Enable Logging?</b>', description: '<div><i>Automatically disables after selected time.</i></div><br>', options: [0: 'Disabled', 1800: '30 Minutes', 3600: '1 Hour', 86400: '24 Hours'], defaultValue: 0
+            }
     }
 }
 
-// Constants
-@Field static final Integer CONST = 0
 
 
 // Parse incoming device messages to generate events
@@ -102,7 +118,7 @@ void parse(String description) {
     deviceReported()
     //
     Map descMap = zigbee.parseDescriptionAsMap(description)
-    if (logEnable) log.debug "descMap:${descMap}"
+    if (logEnable) log.debug "parse descMap:${descMap}"
     String status
 
     if (descMap.clusterId != null && descMap.profileId == "0104") {
@@ -157,8 +173,11 @@ void parse(String description) {
 }
 
 
+//
+//
+//
 private void parseAttributes(Map descMap, String cluster, String endPoint, List<Map> additionalAttributes, String command){
-    //if (logEnable) log.warn "parseAttributes cluster:${cluster}"
+    if (logEnable) log.trace "parseAttributes cluster:${cluster}"
     additionalAttributes.each{
         switch (cluster) {
             case "0000" :     // Basic cluster               
@@ -196,6 +215,11 @@ private void parseAttributes(Map descMap, String cluster, String endPoint, List<
                         def text = "received Power Source: ${it.value}"                // enum8-0x30 default 0x03
                         log.info "${device.displayName} ${text}"
                         updateCurrentStates(" "," ",text)
+                        switch (it.value) {
+                            case "00" : state.powerSource = "Battery"; break
+                            case "01" : state.powerSource = "Mains"; break
+                            default : state.powerSource = "Unknown"; break
+                        }
                         break
                     case "4000" :    //software build
                         updateDataValue("softwareBuild",it.value ?: "unknown")
@@ -232,6 +256,20 @@ private void parseAttributes(Map descMap, String cluster, String endPoint, List<
                 break               
             case "0006" :
                 switch (it.attrId) {
+                    case "0000" :    // cluster 6 On/Off switch report
+                        def map = [:]
+                        if (it.value &&  it.attrId == "0000") {
+                            map.name = "switch"
+                            if (it.value == "00" ) map.value = "off"
+                            else if (it.value == "01" ) map.value = "on"
+                            else map.value = it.value
+                            map.unit = ""
+                        if (map) {
+                            if (txtEnable) {log.info "${map.name} = ${map.value} ${map.unit}"}
+                            sendEvent(map)
+                        }                    
+                    }
+                    break
                     /*
                         // https://github.com/zigpy/zha-device-handlers/pull/1105/commits/3af7d9776b90f275b068bb91e00e8e0633bef1ef
                             attributes = OnOff.attributes.copy()
@@ -263,14 +301,61 @@ private void parseAttributes(Map descMap, String cluster, String endPoint, List<
             case "0405" : // humidity
                 humidityEvent(Integer.parseInt(descMap.value, 16))
                 break
+            case "0702" : //energy
+                def map = [:]
+                if (it.value &&  it.attrId == "0000") {
+                        map.name = "energy"
+                        map.value = zigbee.convertHexToInt(it.value)/energyDiv
+                        map.unit = "kWh"
+                    if (map) {
+                        if (txtEnable) {log.info "${map.name} = ${map.value} ${map.unit}"}
+                        sendEvent(map)
+                    }                    
+                }
+                break
+            case "0B04" : //power
+                log.trace "0B04 it.attrId = ${it.attrId}"
+                def map = [:]
+                if (it.value &&  it.attrId == "050B") {
+                        map.name = "power"
+                        map.value = zigbee.convertHexToInt(it.value)/energyDiv
+                        map.unit = "w"
+                        if (map) {
+                            if (txtEnable) {log.info "${map.name} = ${map.value} ${map.unit}"}
+                            sendEvent(map)
+                        }                    
+                }
+                else if (it.value &&  it.attrId == "0505") {     //voltage
+                        map.name = "voltage"
+                        map.value = zigbee.convertHexToInt(it.value)/powerDiv
+                        map.unit = "V"
+                        if (map) {
+                            if (txtEnable) {log.info "${map.name} = ${map.value} ${map.unit}"}
+                            sendEvent(map)
+                        }                    
+                }
+                else if (it.value &&  it.attrId == "0508") {     //amperage
+                        map.name = "amperage"
+                        map.value = zigbee.convertHexToInt(it.value)/currentDiv
+                        map.unit = "A"
+                        if (map) {
+                            if (txtEnable) {log.info "${map.name} = ${map.value} ${map.unit}"}
+                            sendEvent(map)
+                        }                    
+                }
+                else {
+                    map = [:]
+                }
+                break
             default :
                 if (logEnable) {
                     String respType = (command == "0A") ? "reportResponse" : "readAttributeResponse"
                     log.warn "parseAttributes: UNPROCESSED :${cluster}:${it.attrId}, value:${it.value}, encoding:${it.encoding}, respType:${respType}"
                 }
-        }
-    }
+        } // cluster
+    } // for each additionalAttributes
 }
+
 
 private void processGroupCommand(Map descMap) {
     String status = descMap.data[0]
@@ -329,33 +414,7 @@ private void processGroupCommand(Map descMap) {
 private void processGlobalCommand(Map descMap) {
             switch (descMap.command) {
                 case "01" : //read attribute response
-                    //log.debug "processGlobalCommand read attribute response descMap:${descMap}"
-                    switch (descMap.clusterId) {
-                        case "0402" : // temperature
-                            temperatureEvent(hexStrToSignedInt(descMap.value))
-                            break
-                        case "0403" : // pressure
-                            if (descMap.data[2] != "86") {
-                                pressureEvent(Integer.parseInt(descMap.value, 16))
-                            }
-                            else {
-                                log.info "Pressure is not supported!"
-                            }
-                            break
-                        case "0405" : // humidity
-                            humidityEvent(Integer.parseInt(descMap.value, 16))
-                            break
-                        case "E001" : /// tuya specific
-                            log.info "processGlobalCommand ${descMap.clusterId} (read attribute response) clusterId: ${descMap.clusterId} data:${descMap.data}"
-                            break
-                        default :
-                            log.warn "processGlobalCommand ${descMap.clusterId} (read attribute response) UNKNOWN clusterId: ${descMap.clusterId} data:${descMap.data}"
-                            def status = descMap.data[2]
-                            def hexValue = descMap.data[1] + descMap.data[0] 
-                            if (status == "86") {
-                                log.warn "Unsupported Attributte ${hexValue}"
-                            }
-                    }
+                    readAttributeResponse(descMap)
                     break
                 case "04" : //write attribute response
                     log.info "processGlobalCommand writeAttributeResponse cluster: ${descMap.clusterId} status:${descMap.data[0]}"
@@ -381,6 +440,32 @@ private void processGlobalCommand(Map descMap) {
                         default :
                             if (txtEnable) log.warn "skipped GlobalCommand Configuration response cluster: ${descMap.clusterId} : ${descMap}"
                     }
+                case "09" : // read reporting cofiguration response 
+                    switch (descMap.clusterId) {
+                        case "0B04" :    // power cluster
+                            def attribute = descMap.data[3] + descMap.data[2]
+                            log.trace "attribute = ${attribute}"
+                            switch (attribute) {
+                                case "050B" : // power
+                                    break
+                                case "0505" : // voltage
+                                    break
+                                case "0508" : // amperage
+                                    break
+                                default :
+                                        if (logEnable) log.warn "UNPROCESSED  power cluster read reporting cofiguration response UNKNOWN ATTRIBUTE ${attribute} cluster:${descMap.clusterId}, command:${descMap.command}, data:${descMap.data}"
+                                    break
+                            }
+                            if (descMap.data[0] == "8B") {
+                                log.info ""
+                            }
+                            else {
+                                log.warn ""
+                            }
+                            break
+                    }
+                    if (logEnable) log.warn "UNPROCESSED  read reporting cofiguration response  cluster:${descMap.clusterId}, command:${descMap.command}, data:${descMap.data}"
+                    break
                 
                 case "0B" ://command response
                     String clusterCmd = descMap.data[0]
@@ -407,16 +492,68 @@ private void processGlobalCommand(Map descMap) {
                             break
                         default :
                             if (txtEnable) log.warn "skipped GlobalCommand response cluster: ${descMap.clusterId} : ${descMap}"
-                    }
+                    } // commandresponse 
                     if (status == "82") {
                         if (logEnable) log.warn "unsupported general command cluster:${descMap.clusterId}, command:${clusterCmd}"
                     }
                     break
                 default :
                     if (logEnable) log.warn "skipped global command cluster:${descMap.clusterId}, command:${descMap.command}, data:${descMap.data}"
-            }
+            } // command
 
 }
+
+
+
+private void readAttributeResponse(Map descMap) {
+    //log.debug "processGlobalCommand read attribute response descMap:${descMap}"
+    def status = descMap.data[2]
+    def hexValue = descMap.data[1] + descMap.data[0] 
+    switch (descMap.clusterId) {
+        case "0001" : // Power?
+            // attributes 0x20 and 0x21
+            if (status != "86") {
+                log.warn "UNPROCESSED processGlobalCommand ${descMap.clusterId} (read attribute response) clusterId: ${descMap.clusterId} data:${descMap.data}"
+            }
+            else {
+                log.info "Power/Battery is not supported!"
+            }
+            break    // TODO
+        case "0402" : // temperature
+            if (status != "86") {
+                temperatureEvent(hexStrToSignedInt(descMap.value))
+            }
+            else {
+                log.info "Temperature is not supported!"
+            }
+            break
+        case "0403" : // pressure
+            if (status != "86") {
+                pressureEvent(Integer.parseInt(descMap.value, 16))
+            }
+            else {
+                log.info "Pressure is not supported!"
+            }
+            break
+        case "0405" : // humidity
+            if (status != "86") {
+                humidityEvent(Integer.parseInt(descMap.value, 16))
+            }
+            else {
+                log.info "Humidity is not supported!"
+            }
+            break
+        case "E001" : /// tuya specific
+            log.warn "processGlobalCommand ${descMap.clusterId} (read attribute response) TUYA SPECIFIC clusterId: ${descMap.clusterId} data:${descMap.data}"
+            break
+        default :
+            log.warn "processGlobalCommand ${descMap.clusterId} (read attribute response) UNKNOWN clusterId: ${descMap.clusterId} data:${descMap.data}"
+            if (status == "86") {
+                log.warn "Unsupported Attributte ${hexValue}"
+            }
+    } // clusterID 
+}
+
 
 
 // Events generated
@@ -538,6 +675,10 @@ def batteryPercentageEvent(rawValue) {
 
 
 
+
+
+
+
 def configureTemperatureReporting (min, max, delta)
 {
     int intDelta = (Float.parseFloat(delta)+0.005) * 100.0
@@ -576,13 +717,63 @@ List<String> getResetToDefaultsCmds() {
 
 
 
+/*
+private def parseBindingTableMessage(description) {
+	Integer groupAddr = getGroupAddrFromBindingTable(description)
+	if (groupAddr) {
+		List cmds = addHubToGroup(groupAddr)
+		cmds?.collect { new hubitat.device.HubAction(it) }
+	}
+}
+
+private Integer getGroupAddrFromBindingTable(description) {
+	//log.info "Parsing binding table - '$description'"
+	def btr = zigbee.parseBindingTableResponse(description)
+	def groupEntry = btr?.table_entries?.find { it.dstAddrMode == 1 }
+
+	//log.info "Found ${groupEntry}"
+
+	!groupEntry?.dstAddr ?: Integer.parseInt(groupEntry.dstAddr, 16)
+}
+
+private List addHubToGroup(Integer groupAddr) {
+	["st cmd 0x0000 0x01 ${CLUSTER_GROUPS} 0x00 {${zigbee.swapEndianHex(zigbee.convertToHexString(groupAddr,4))} 00}", "delay 200"]
+}
+
+private List readDeviceBindingTable() {
+	["zdo mgmt-bind 0x${device.deviceNetworkId} 0", "delay 200"]
+}
+*/
+
+
 
 def test() {
+    
+    //log.debug "${param1.value"
+    log.debug "${testNumber}"
+    staticTestNumber = 4
+    testNumber = 4
+    log.debug "${testNumber}"
+    
+    //log.trace "${param1.name}"
+    //log.trace "${param1.unit}"
+    
+    /*
+
+    command "configureTemperatureReporting"
+
+
     def comment = "Zigbee Reporting Configuration"
     state.comment = comment + " " + version()
-    def attr = "test attribure"
-    //sendEvent(name: "attribute1", value: attr)
-    //updateDataValue('attribute1', attr)    
+
+    List repConf
+    repConf = zigbee.reportingConfiguration(0x0402, 0x0000, [:], 250)
+   // repConf = zigbee.reportingConfiguration(0x0001, 0x0020, additionalParams, 250)
+    log.trace "repConf = ${repConf}"
+
+   // List reportingConfiguration(Integer clusterId, Integer attributeId, Map additionalParams=[:], int delay = STANDARD_DELAY_INT) {
+    sendZigbeeCommands(repConf)
+*/
 }
 
 
@@ -593,8 +784,8 @@ def updateCurrentStates(_1=" ", _2=" ", _3= " ") {
 }
 
 void resetToDefaults() {
-	state.clear()
-	updateDataValue("calcBattery", "true")	// Calculate Battery Perc until an Battery Perc event is sent
+	clearStateVariables()
+	//updateDataValue("calcBattery", "true")	// Calculate Battery Perc until an Battery Perc event is sent
 	addToQueue("resetToDefaults")
 }
 
@@ -603,10 +794,19 @@ void refreshAll() {
 	addToQueue("refreshAll")
 }
 
-
-def getDeviceInfo() {
-    if (logEnable) {log.info "${device.displayName} getDeviceInfo() requested"}
+void clearStateVariables() {
 	state.clear()
+    state.powerSource = "unknown"
+    state.temperatureSupported = false
+    state.tempConfig = ""
+    state.humiditySupported = false
+    state.humConfig = ""
+}
+
+
+def _0_getDeviceInfo() {
+    if (logEnable) {log.info "${device.displayName} getDeviceInfo() requested"}
+	clearStateVariables()
 	refreshAll()
 	return getRefreshCmds()
 }
@@ -626,7 +826,7 @@ def installed()
 
 def initialize() {
     if (logEnable) {log.debug "Zigbee Reporting Configuration initialize()"}
-    state.clear()
+    clearStateVariables()
     updateCurrentStates()
     displayCounter = timeoutCounter = 0
     if (repairAggressive==true) {
@@ -813,6 +1013,8 @@ void sendDelayedCmds() {
 			sendZigbeeCommands(getConfigureCmds())
 		} else if (command == "identify") {
 			sendZigbeeCommands(getIdentifyCmds(), 500)
+		} else if (command == "readReporting") {
+			sendZigbeeCommands(getReadReportingCmds(), 200)
 		}
         stopDisplayCounter()    // ??????
 	}
@@ -871,7 +1073,88 @@ void sendConfigurationToDeviceNow() {
     updateCurrentStates(text, " ",  " ")    
     sendZigbeeCommands(getConfigureCmds())
     startDisplayCounter()
-    startTimeoutCounter(10)
+    startTimeoutCounter(30)
 }
 
+
+List<String> getReadReportingCmds() {
+	List<String> cmds = []
+    
+    cmds += zigbee.reportingConfiguration(0x0402, 0x0000, [:], 250)    // Temperature
+    cmds += zigbee.reportingConfiguration(0x0403, 0x0000, [:], 250)    // Pressure
+    cmds += zigbee.reportingConfiguration(0x0405, 0x0000, [:], 250)    // Humidity
+    cmds += zigbee.reportingConfiguration(0x0001, 0x0020, [:], 250)    // Battery Voltage
+    cmds += zigbee.reportingConfiguration(0x0001, 0x0021, [:], 250)    // Battery % remaining
+    
+	return cmds
+}
+
+
+void _1_readReportingConfiguration() {
+    addToQueue("readReporting")
+            log.trace "addToQueue()"
+    log.trace "state.powerSource = ${state.powerSource}"
+    if (state.powerSource == "Mains") {
+        sendDelayedCmds()
+        log.trace "sendDelayedCmds()"
+    }
+}
+
+/*
+    zigbee.electricMeasurementPowerRefresh() +  // power
+    zigbee.readAttribute(0x0702, 0x0000) +      // energy
+    zigbee.readAttribute(0x0B04, 0x0505) +      // voltage
+    zigbee.readAttribute(0x0B04, 0x0508)        // current
+*/
+
+
+void readAttribute( attribute ) {
+	List<String> cmds = []    
+    switch (attribute) {
+        case ONOFF :        cmds += zigbee.readAttribute(0x0006, 0x0000); break;
+        case BATTERY :      cmds += zigbee.readAttribute(0x0001, 0x0020); break;
+        case TEMPERATURE :  cmds += zigbee.readAttribute(0x0402, 0x0000); break;
+        case PRESSURE :     cmds += zigbee.readAttribute(0x0403, 0x0000); break;
+        case HUMIDITY :     cmds += zigbee.readAttribute(0x0405, 0x0000); break;
+        case POWER :        cmds += zigbee.electricMeasurementPowerRefresh(); break    // 0B04 / 050B
+        case ENERGY :       cmds += zigbee.readAttribute(0x0702, 0x0000); break
+        case VOLTAGE :      cmds += zigbee.readAttribute(0x0B04, 0x0505); break
+        case AMPERAGE :     cmds += zigbee.readAttribute(0x0B04, 0x0508); break
+        default :
+            break
+    }
+    if (cmds != null) {
+        sendZigbeeCommands(cmds)
+    }
+}
+
+/*
+    cmds +=     // Temperature
+    cmds +=     // Pressure
+    cmds +=     // Humidity
+    cmds +=     // Battery Voltage
+    cmds += zigbee.reportingConfiguration(0x0001, 0x0021, [:], 250)    // Battery % remaining
+    
+
+*/
+
+void readConfiguration( attribute ) {
+	List<String> cmds = []    
+    switch (attribute) {
+        case ONOFF :        cmds += zigbee.reportingConfiguration(0x0006, 0x0000, [:], 250); break;
+        case BATTERY :      cmds += zigbee.reportingConfiguration(0x0001, 0x0020, [:], 250); cmds += zigbee.reportingConfiguration(0x0001, 0x0021, [:], 250); break;
+        case TEMPERATURE :  cmds += zigbee.reportingConfiguration(0x0402, 0x0000, [:], 250); break;
+        case PRESSURE :     cmds += zigbee.reportingConfiguration(0x0403, 0x0000, [:], 250); break;
+        case HUMIDITY :     cmds += zigbee.reportingConfiguration(0x0405, 0x0000, [:], 250); break;
+        case POWER :        cmds += zigbee.reportingConfiguration(0x0B04, 0x050B, [:], 250); break;    // 0B04 / 050B
+        case ENERGY :       cmds += zigbee.reportingConfiguration(0x0702, 0x0000, [:], 250); break;
+        case VOLTAGE :      cmds += zigbee.reportingConfiguration(0x0B04, 0x0505, [:], 250); break;
+        case AMPERAGE :     cmds += zigbee.reportingConfiguration(0x0B04, 0x0508, [:], 250); break;
+        default :
+            break
+    }
+    if (cmds != null) {
+        sendZigbeeCommands(cmds)
+    }
+}
 
